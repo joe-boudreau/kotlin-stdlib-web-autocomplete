@@ -1,125 +1,149 @@
-# Kotlin Stdlib Autocomplete — Project Context
+# Kotlin Stdlib Search
 
-## What This Is
-
-A web-based autocomplete and method documentation reference for the Kotlin standard library. The primary use case is programming interviews where you can use online materials but not your own IDE. It replicates the IntelliJ autocomplete + quick-doc experience in a browser: pick a type, fuzzy-search methods, see signatures and docs instantly.
+A browser-based autocomplete and documentation reference for the entire Kotlin standard library. Built for programming interviews where you can use online materials but not your own IDE. Replicates the IntelliJ autocomplete + quick-doc experience in a browser.
 
 ## Architecture
 
-Fully static frontend. No backend, no database, no API.
-
 ```
-[One-time build step]
-  Kotlin stdlib → parsing script → methods.json
+[Build step — ./gradlew run]
+  kotlin-stdlib.jar ──→ MetadataParser ──→ ParseResult (types + extensions)
+  .kotlin_builtins   ──→ BuiltinsParser ──┘
+                                          ↓
+                         InheritanceResolver → denormalized entries
+                                          ↓
+  kotlin-stdlib-sources.jar → KDocParser → DocMerger → entries with docs
+                                          ↓
+                                     methods.json (13,746 entries, ~7MB)
 
-[Deploy]
-  Static site: index.html + methods.json
+[Deploy — static site]
+  frontend/index.html + frontend/methods.json
 
 [Runtime]
-  fetch methods.json → in-memory array → filter/search → render
+  fetch methods.json → in-memory array → fuzzy search → render
 ```
 
-The dataset is small enough (~50 core types, ~1500-2000 methods, <2MB JSON) to load entirely into the browser and search client-side. Prefix and fuzzy matching on this size is instant in JS.
+## How to Build
 
-## Data Sources
+```bash
+./gradlew run                    # generates methods.json in project root
+cp methods.json frontend/        # copy to frontend directory
+```
 
-Two sources, combined:
+The Gradle build automatically resolves `kotlin-stdlib-sources.jar` via a custom `stdlibSources` configuration and passes it as `STDLIB_SOURCES_JAR` env var to the run task.
 
-### 1. `kotlin-metadata-jvm` — structural data (primary)
+To serve locally: `cd frontend && python3 -m http.server 8090`
 
-JetBrains' own library for reading `@Metadata` annotations from compiled `.class` files. Stable since Kotlin 2.0, ships as `org.jetbrains.kotlin:kotlin-metadata-jvm:$kotlinVersion`.
+## Project Structure
 
-Use this for:
-- Class names, supertypes (inheritance graph), type parameters
-- Member functions and properties (names, signatures, visibility, modality)
-- Extension functions (via `FileFacade` metadata — `kmPackage.functions` where each `KmFunction` has a `receiverParameterType`)
-- Operator flags, inline/infix modifiers, deprecation status
-- Constructors
+```
+src/main/kotlin/
+  Main.kt                          — entry point, orchestrates parse → resolve → merge → serialize
+  model/Model.kt                   — data classes (ParamInfo, MemberInfo, TypeInfo, DenormalizedEntry)
+  parser/MetadataParser.kt          — scans kotlin-stdlib.jar, reads @Metadata from .class files
+  parser/BuiltinsParser.kt          — reads .kotlin_builtins protobuf files for mapped types
+  parser/InheritanceResolver.kt     — walks supertype graph, propagates extensions, deduplicates
+  docs/KDocParser.kt                — parses KDoc from kotlin-stdlib-sources.jar .kt files
+  docs/DocMerger.kt                 — matches KDoc entries to denormalized entries by name + params
 
-Key API surface:
-- `KotlinClassMetadata.readStrict(metadataAnnotation)` → parse a `.class` file's metadata
-- `KotlinClassMetadata.Class` → access `kmClass.functions`, `kmClass.properties`, `kmClass.supertypes`, `kmClass.typeParameters`, `kmClass.constructors`
-- `KotlinClassMetadata.FileFacade` → access `kmPackage.functions` (this is where top-level and extension functions live)
-- `KmFunction.receiverParameterType` → tells you which type an extension function extends
-- `KmClass.supertypes` → `MutableList<KmType>` for building the inheritance graph
+src/main/java/
+  parser/BuiltinsReader.java        — Java bridge to read .kotlin_builtins protobuf (Kotlin blocks
+                                      access to kotlin.metadata.internal.* packages, Java doesn't)
 
-Approach: load `kotlin-stdlib.jar`, iterate `.class` files (using ASM's `ClassReader` or classloader reflection), read the `@Metadata` annotation from each, parse with `KotlinClassMetadata.readStrict()`.
+frontend/
+  index.html                        — single-page app
+  style.css                         — Darcula-inspired dark theme, JetBrains Mono + IBM Plex Sans
+  app.js                            — search, fuzzy matching, keyboard nav, KDoc rendering
+  methods.json                      — generated data file (not checked in, ~7MB)
+  kotlin-icon.png                   — Kotlin logo for branding
+```
 
-**Limitation:** no KDoc documentation strings. Metadata only has structural info.
+## Data Pipeline Details
 
-### 2. Kotlin stdlib source (GitHub) — KDoc descriptions
+### 1. MetadataParser
+Iterates every `.class` in kotlin-stdlib.jar, reads `@Metadata` annotations via `Class.forName`, parses with `KotlinClassMetadata.readLenient()`. Handles `Class`, `FileFacade`, and `MultiFileClassPart` metadata types. Extracts types with declared members and extension functions with receiver types. Filters out private/internal visibility. No package filtering — covers the entire stdlib.
 
-The stdlib source at `github.com/JetBrains/kotlin/tree/master/libraries/stdlib` contains inline KDoc comments. Many collection extensions are auto-generated (in `generated/_Collections.kt` etc.) but the generated files include full KDoc.
+### 2. BuiltinsParser
+Reads `.kotlin_builtins` protobuf files from the stdlib JAR for **mapped types** (List, Map, String, Int, etc.) that don't have `@Metadata` annotations because they're compiled to JVM primitives/interfaces. Uses `BuiltinsReader.java` as a bridge since Kotlin restricts access to `kotlin.metadata.internal.*` packages. Extracts class declarations, member functions, properties, supertypes, and type parameters.
 
-Join docs to structural data by matching on function name + parameter types.
+Currently parses ~135 builtin types including:
+- All primitive types (Int, Long, Double, etc.) with arithmetic operators
+- Collection interfaces (List, MutableList, Map, Set, Iterator, etc.)
+- CharSequence, String, Comparable, Number, Array, primitive arrays
+- Reflection types (KClass, KProperty, etc.)
 
-## Data Model
+### 3. InheritanceResolver
+Takes the combined types map and extension function list, then:
+- Merges companion object members into their parent types
+- Creates stub TypeInfo for extension receivers not in any parsed data (e.g. Java types like File, Path)
+- Walks supertypes via BFS, collecting inherited members + applicable extensions
+- Deduplicates by (name, kind, paramTypes), prioritizing more specific definitions
+- Maps operator names to symbolic forms (get→[], plus→+, contains→in, etc.)
 
-Fully denormalized. Each entry is self-contained — no hierarchy resolution at query time.
+Output: flat list of `DenormalizedEntry` — every type lists every method callable on it.
+
+### 4. KDocParser
+Parses `.kt` source files from `kotlin-stdlib-sources.jar`. Tracks enclosing class/interface scope to associate KDoc for members declared inside type bodies (critical for builtin interfaces like `List`, `Map`). Extracts summary (first sentence/paragraph), full description, @param docs, @return, @since tags.
+
+### 5. DocMerger
+Matches KDoc entries to denormalized entries using a multi-step strategy:
+1. Exact: receiver type from signature + member name + param count
+2. Entry's owning type as receiver (for inherited extensions)
+3. Null receiver with param-name validation (class-declared members)
+4. Name + param count with param-name matching (cross-type fallback)
+
+Current coverage: ~86% of entries have documentation.
+
+## Data Model (methods.json)
+
+Each entry in the JSON array:
 
 ```json
 {
-  "type": "String",
-  "package": "kotlin",
-  "member": "substringAfter",
+  "type": "List",
+  "packageName": "kotlin.collections",
+  "member": "filter",
   "kind": "extension",
-  "signature": "fun String.substringAfter(delimiter: String, missingDelimiterValue: String = this): String",
-  "summary": "Returns the substring after the first occurrence of delimiter.",
-  "description": "If the string does not contain the delimiter, returns missingDelimiterValue which defaults to the original string.",
-  "params": [
-    { "name": "delimiter", "type": "String", "doc": "..." },
-    { "name": "missingDelimiterValue", "type": "String", "doc": "..." }
-  ],
-  "returnType": "String",
+  "signature": "inline fun <T> Iterable<T>.filter(predicate: (T) -> Boolean): List<T>",
+  "returnType": "List<T>",
+  "params": [{"name": "predicate", "type": "(T) -> Boolean", "doc": "..."}],
+  "isOperator": true,
+  "operatorSymbol": "[]",
+  "isInline": true,
+  "isInfix": true,
+  "isSuspend": true,
+  "isDeprecated": true,
+  "summary": "Returns a list containing only elements matching the given predicate.",
+  "description": "Full KDoc description with markdown...",
   "since": "1.0"
 }
 ```
 
-If `filter` is declared on `Iterable` and `List` extends `Iterable`, duplicate the entry under both `"type": "Iterable"` and `"type": "List"`. Every type should list every method you can actually call on it.
-
-## Inheritance Resolution (Parsing Script)
-
-The parsing script must:
-
-1. Parse every type and its declared members from metadata
-2. Build the inheritance graph using `KmClass.supertypes`
-3. Collect extension functions from `FileFacade` classes, bucketing by `receiverParameterType`
-4. For each type, walk up the supertype chain and collect all inherited members + all extension functions whose receiver is that type or any of its supertypes
-5. Emit a flat denormalized list
-
-### Things to handle:
-- **Extension functions** — not part of class hierarchy; declared in `FileFacade` metadata with a `receiverParameterType`. Attach to the receiver type AND all subtypes.
-- **Operator overloading** — flag operators (e.g. `get` → `[]`, `plus` → `+`, `contains` → `in`) in the data so the UI can show both forms.
-- **Member vs extension name collisions** — keep both as separate entries.
-- **Deprecation** — flag deprecated methods, de-prioritize in search.
-
-### Things to ignore (for now):
-- Java interop / mapped Java methods (just Kotlin stdlib)
-- Concrete generic type resolution (preserve signatures as-is)
-- Internal/private members
-
-## Scope
-
-Start with these packages:
-- `kotlin.collections` (List, MutableList, Map, MutableMap, Set, Sequence, etc.)
-- `kotlin.text` (String, Char, Regex, StringBuilder)
-- `kotlin` (core types: Any, Int, Boolean, etc. + scope functions)
-- `kotlin.io` (File extensions, buffered readers, etc.)
-- `kotlin.ranges`
-- `kotlin.sequences`
-- `kotlin.comparisons`
-
-This covers ~90%+ of interview use cases. Expand later as needed.
+Boolean/optional fields use `encodeDefaults = false` — they only appear in the JSON when true/non-empty.
 
 ## Frontend
 
-- Two-mode search: filter by type, then fuzzy-search methods within that type. Or a single input that parses `List.filt` as type=List, query=filt.
-- Show signature + one-line summary inline, full doc on expand.
-- No framework requirement — could be plain JS, or a lightweight framework. Keep it fast.
-- Host statically (GitHub Pages, S3+CloudFront, Vercel, etc.)
+Plain HTML/CSS/JS, no framework. Dark theme inspired by IntelliJ Darcula.
+
+Key features:
+- **Two-mode search**: `List.filter` (type-scoped), `map` (global), `List.` (all members)
+- **Fuzzy matching** with scoring (prefix > consecutive chars > sparse match)
+- **Keyboard navigation**: ↑↓ arrows, Enter to expand, Escape to clear
+- **KDoc rendering**: converts KDoc markdown to HTML (inline code, code blocks, bold, symbol links)
+- **Type bar**: clickable chips for matching types
+- **Operator symbols** shown alongside method names
+- **URL hash state**: `#List.filter` is bookmarkable
 
 ## Tech Stack
 
-- **Parsing script:** Kotlin (using `kotlin-metadata-jvm`, ASM for classfile reading)
-- **Output:** Single `methods.json` file
-- **Frontend:** Static HTML/JS/CSS
+- **Kotlin 2.3.21** with `kotlin-metadata-jvm` for metadata parsing
+- **kotlinx-serialization-json** for JSON output
+- **ASM 9.10.1** (dependency, not actively used — could be removed)
+- **Gradle 9.3** with JVM toolchain 25
+- **Frontend**: vanilla HTML/CSS/JS
+
+## Known Limitations
+
+- ~14% of entries lack KDoc (mostly builtin operator overloads on primitive types like `Int.plus(Long)` — these have many overloads with identical docs in the compiler source but different param type combos that don't match)
+- Type parameters on mapped types from builtins sometimes show `*` instead of the resolved type variable (e.g. `Iterator<*>` instead of `Iterator<E>`)
+- No Java interop methods (only Kotlin stdlib declarations)
+- `methods.json` is ~7MB — loads fine but could be compressed for production deploy
