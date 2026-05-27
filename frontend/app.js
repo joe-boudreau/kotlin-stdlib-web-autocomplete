@@ -196,6 +196,10 @@ function render(entries) {
     const returnStr = e.returnType && e.returnType !== 'Unit'
       ? `→ ${e.returnType}` : '';
 
+    const summaryStr = e.summary
+      ? `<span class="sig-summary">${escapeHtml(e.summary)}</span>`
+      : '';
+
     row.innerHTML = `
       <span class="kind-badge ${badgeClass}">${badgeLabel}</span>
       <span class="type-tag">${escapeHtml(e.type)}.</span>
@@ -203,6 +207,7 @@ function render(entries) {
       ${operatorSuffix}
       <span class="sig-abbrev">${escapeHtml(params)}</span>
       <span class="return-type">${escapeHtml(returnStr)}</span>
+      ${summaryStr}
     `;
 
     row.addEventListener('click', () => toggleExpand(i));
@@ -264,12 +269,13 @@ function buildDetailHTML(e) {
     html += '<div class="detail-params">';
     html += '<div class="detail-params-title">Parameters</div>';
     for (const p of e.params) {
+      const paramDocStr = p.doc ? `<div class="detail-param-doc">${escapeHtml(p.doc)}</div>` : '';
       html += `<div class="detail-param-row">
         <span class="detail-param-name">${escapeHtml(p.name)}</span>
         <span class="detail-param-type">${escapeHtml(p.type)}</span>
         ${p.hasDefault ? '<span class="detail-param-default">= default</span>' : ''}
         ${p.isVararg ? '<span class="detail-param-default">vararg</span>' : ''}
-      </div>`;
+      </div>${paramDocStr}`;
     }
     html += '</div>';
   }

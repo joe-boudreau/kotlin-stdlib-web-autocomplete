@@ -12,6 +12,7 @@ data class ParamInfo(
     val type: String,
     val hasDefault: Boolean = false,
     val isVararg: Boolean = false,
+    val doc: String = "",
 )
 
 data class MemberInfo(
