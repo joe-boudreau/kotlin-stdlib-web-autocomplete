@@ -270,7 +270,7 @@ class MetadataParser {
 
     // --- Type rendering ---
 
-    fun renderType(type: KmType, typeParams: Map<Int, String>): String {
+    private fun renderType(type: KmType, typeParams: Map<Int, String>): String {
         val base = when (val classifier = type.classifier) {
             is KmClassifier.Class -> {
                 val name = classifier.name
@@ -344,6 +344,9 @@ class MetadataParser {
         else -> null
     }
 
+    private val FUNCTION_TYPE_REGEX = Regex("kotlin/Function\\d+")
+    private val SUSPEND_FUNCTION_TYPE_REGEX = Regex("kotlin/coroutines/SuspendFunction\\d+")
+
     private fun isFunctionType(name: String): Boolean =
-        name.matches(Regex("kotlin/Function\\d+")) || name.matches(Regex("kotlin/coroutines/SuspendFunction\\d+"))
+        FUNCTION_TYPE_REGEX.matches(name) || SUSPEND_FUNCTION_TYPE_REGEX.matches(name)
 }

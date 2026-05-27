@@ -23,7 +23,6 @@ class BuiltinsParser {
                 val qualifiedName = normalizeQualifiedName(rawName)
                 val packageName = qualifiedName.substringBeforeLast('.', "")
                 val simpleName = qualifiedName.substringAfterLast('.')
-                    .let { if (it.contains('.')) it else it } // preserve nested like Map.Entry
 
                 val typeParamMap = cls.typeParams().associate { it.id() to it.name() }
 
@@ -62,14 +61,8 @@ class BuiltinsParser {
                     if (member != null) members.add(member)
                 }
 
-                // Determine actual simple name for nested types
-                val displayName = when {
-                    simpleName.contains('.') -> simpleName // Map.Entry stays as Map.Entry
-                    else -> simpleName
-                }
-
                 types[qualifiedName] = TypeInfo(
-                    name = displayName,
+                    name = simpleName,
                     qualifiedName = qualifiedName,
                     packageName = packageName,
                     supertypes = supertypes,

@@ -23,12 +23,17 @@ dependencies {
     testImplementation(kotlin("test"))
     implementation("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.21")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
-    implementation("org.ow2.asm:asm:9.10.1")
     stdlibSources("org.jetbrains.kotlin:kotlin-stdlib:2.3.21:sources")
 }
 
 tasks.named<JavaExec>("run") {
     environment("STDLIB_SOURCES_JAR", stdlibSources.singleFile.absolutePath)
+}
+
+tasks.register<Copy>("copyToFrontend") {
+    dependsOn("run")
+    from("methods.json")
+    into("frontend")
 }
 
 kotlin {

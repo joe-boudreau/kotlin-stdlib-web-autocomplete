@@ -57,16 +57,15 @@ class KDocParser {
 
             // Track brace depth for class/interface scope (skip braces in strings/comments)
             if (!trimmed.startsWith("/**") && !trimmed.startsWith("*") && !trimmed.startsWith("//")) {
-                for (ch in lines[i]) {
-                    when (ch) {
-                        '{' -> braceDepth++
-                        '}' -> {
-                            if (typeAtDepth.containsKey(braceDepth)) {
-                                typeStack.removeLastOrNull()
-                                typeAtDepth.remove(braceDepth)
-                            }
-                            braceDepth--
+                countBraces(lines[i]) { delta ->
+                    if (delta > 0) {
+                        braceDepth++
+                    } else {
+                        if (typeAtDepth.containsKey(braceDepth)) {
+                            typeStack.removeLastOrNull()
+                            typeAtDepth.remove(braceDepth)
                         }
+                        braceDepth--
                     }
                 }
             }
@@ -84,7 +83,7 @@ class KDocParser {
             if (trimmed.startsWith("/**")) {
                 val kdocLines = mutableListOf<String>()
 
-                if (trimmed.contains("*/") && !trimmed.endsWith("/**")) {
+                if (trimmed.contains("*/") && trimmed.indexOf("*/") > trimmed.indexOf("/**") + 3) {
                     kdocLines.add(trimmed)
                     i++
                 } else {
@@ -277,6 +276,23 @@ class KDocParser {
         val base = if (angleBracket > 0) substring(0, angleBracket) else this
         // "kotlin.collections.List" → "List"
         return base.substringAfterLast('.')
+    }
+
+    private fun countBraces(line: String, onBrace: (Int) -> Unit) {
+        var inString = false
+        var inChar = false
+        var escaped = false
+        for (ch in line) {
+            if (escaped) { escaped = false; continue }
+            if (ch == '\\') { escaped = true; continue }
+            if (ch == '"' && !inChar) { inString = !inString; continue }
+            if (ch == '\'' && !inString) { inChar = !inChar; continue }
+            if (inString || inChar) continue
+            when (ch) {
+                '{' -> onBrace(1)
+                '}' -> onBrace(-1)
+            }
+        }
     }
 
     // ── KDoc text parsing ───────────────────────

@@ -22,12 +22,20 @@ const typeChips = document.getElementById('typeChips');
 
 // ── Bootstrap ───────────────────────────────────
 fetch('methods.json')
-  .then(r => r.json())
+  .then(r => {
+    if (!r.ok) throw new Error(`Failed to load methods.json: ${r.status}`);
+    return r.json();
+  })
   .then(data => {
     allEntries = data;
     buildIndex();
     initFromHash();
     searchInput.focus();
+  })
+  .catch(err => {
+    emptyState.querySelector('.empty-title').textContent = 'Failed to load data';
+    emptyState.querySelector('.empty-hint').textContent = err.message;
+    emptyState.querySelector('.empty-examples').style.display = 'none';
   });
 
 function buildIndex() {
@@ -53,20 +61,6 @@ function parseQuery(raw) {
 }
 
 // ── Matching ────────────────────────────────────
-function prefixMatch(name, query) {
-  return name.toLowerCase().startsWith(query.toLowerCase());
-}
-
-function fuzzyMatch(name, query) {
-  const nl = name.toLowerCase();
-  const ql = query.toLowerCase();
-  let qi = 0;
-  for (let ni = 0; ni < nl.length && qi < ql.length; ni++) {
-    if (nl[ni] === ql[qi]) qi++;
-  }
-  return qi === ql.length;
-}
-
 function fuzzyScore(name, query) {
   const nl = name.toLowerCase();
   const ql = query.toLowerCase();

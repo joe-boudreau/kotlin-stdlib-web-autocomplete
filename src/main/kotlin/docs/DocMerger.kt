@@ -76,13 +76,13 @@ class DocMerger {
         }
     }
 
+    private val RECEIVER_REGEX = Regex("""(?:fun\s+(?:<[^>]+>\s+)?)(\w+(?:<[^>]*>)?)\.""")
+
     private fun extractReceiverFromSignature(entry: DenormalizedEntry): String? {
         if (entry.kind != "extension") return null
-        val sig = entry.signature
-        val dotIdx = sig.indexOf('.')
-        if (dotIdx < 0) return null
-        val beforeDot = sig.substring(0, dotIdx)
-        val withoutGenerics = beforeDot.replace(Regex("<[^>]*>"), "")
-        return withoutGenerics.trim().split(Regex("\\s+")).lastOrNull()
+        val match = RECEIVER_REGEX.find(entry.signature) ?: return null
+        val receiver = match.groupValues[1]
+        val angleBracket = receiver.indexOf('<')
+        return if (angleBracket > 0) receiver.substring(0, angleBracket) else receiver
     }
 }
