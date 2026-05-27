@@ -1,0 +1,470 @@
+// ═══════════════════════════════════════════════
+// Kotlin stdlib Quick Reference — app.js
+// ═══════════════════════════════════════════════
+
+let allEntries = [];
+let typeIndex = {};   // type name → [entries]
+let allTypes = [];    // sorted unique type names
+let filtered = [];    // current search results
+let selectedIdx = -1;
+let expandedIdx = -1;
+
+const MAX_RESULTS = 200;
+
+// ── DOM refs ────────────────────────────────────
+const searchInput = document.getElementById('search');
+const resultsEl = document.getElementById('results');
+const resultCount = document.getElementById('resultCount');
+const emptyState = document.getElementById('emptyState');
+const typeBar = document.getElementById('typeBar');
+const typeChips = document.getElementById('typeChips');
+
+// ── Bootstrap ───────────────────────────────────
+fetch('methods.json')
+  .then(r => r.json())
+  .then(data => {
+    allEntries = data;
+    buildIndex();
+    initFromHash();
+    searchInput.focus();
+  });
+
+function buildIndex() {
+  typeIndex = {};
+  for (const entry of allEntries) {
+    if (!typeIndex[entry.type]) typeIndex[entry.type] = [];
+    typeIndex[entry.type].push(entry);
+  }
+  allTypes = Object.keys(typeIndex).sort((a, b) => a.localeCompare(b));
+}
+
+// ── Search parsing ──────────────────────────────
+function parseQuery(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return { type: '', query: '' };
+
+  const dotIdx = trimmed.indexOf('.');
+  if (dotIdx === -1) return { type: '', query: trimmed };
+
+  const typePart = trimmed.slice(0, dotIdx);
+  const queryPart = trimmed.slice(dotIdx + 1);
+  return { type: typePart, query: queryPart };
+}
+
+// ── Matching ────────────────────────────────────
+function prefixMatch(name, query) {
+  return name.toLowerCase().startsWith(query.toLowerCase());
+}
+
+function fuzzyMatch(name, query) {
+  const nl = name.toLowerCase();
+  const ql = query.toLowerCase();
+  let qi = 0;
+  for (let ni = 0; ni < nl.length && qi < ql.length; ni++) {
+    if (nl[ni] === ql[qi]) qi++;
+  }
+  return qi === ql.length;
+}
+
+function fuzzyScore(name, query) {
+  const nl = name.toLowerCase();
+  const ql = query.toLowerCase();
+
+  if (nl === ql) return 1000;
+  if (nl.startsWith(ql)) return 900 + (ql.length / nl.length) * 100;
+
+  // Consecutive match bonus
+  let qi = 0, consecutive = 0, maxConsecutive = 0, firstMatch = -1;
+  for (let ni = 0; ni < nl.length && qi < ql.length; ni++) {
+    if (nl[ni] === ql[qi]) {
+      if (firstMatch === -1) firstMatch = ni;
+      consecutive++;
+      maxConsecutive = Math.max(maxConsecutive, consecutive);
+      qi++;
+    } else {
+      consecutive = 0;
+    }
+  }
+  if (qi < ql.length) return -1;
+
+  const coverageBonus = (ql.length / nl.length) * 50;
+  const earlyBonus = firstMatch === 0 ? 100 : (50 / (firstMatch + 1));
+  return maxConsecutive * 30 + coverageBonus + earlyBonus;
+}
+
+function matchType(typeName, query) {
+  if (!query) return true;
+  return typeName.toLowerCase().startsWith(query.toLowerCase());
+}
+
+// ── Search execution ────────────────────────────
+function search(raw) {
+  const { type, query } = parseQuery(raw);
+  let results = [];
+
+  if (type) {
+    // Type-scoped search
+    const matchingTypes = allTypes.filter(t => matchType(t, type));
+
+    if (matchingTypes.length === 0) {
+      updateTypeBar([], type);
+      return [];
+    }
+
+    updateTypeBar(matchingTypes, type);
+
+    for (const t of matchingTypes) {
+      const entries = typeIndex[t] || [];
+      if (!query) {
+        results.push(...entries.map(e => ({ entry: e, score: 500 })));
+      } else {
+        for (const e of entries) {
+          const score = fuzzyScore(e.member, query);
+          if (score >= 0) results.push({ entry: e, score });
+        }
+      }
+    }
+  } else if (query) {
+    // Global search
+    updateTypeBar([], '');
+
+    for (const e of allEntries) {
+      const score = fuzzyScore(e.member, query);
+      if (score >= 0) results.push({ entry: e, score });
+    }
+  } else {
+    updateTypeBar([], '');
+    return [];
+  }
+
+  // Sort: score desc, deprecated last, then alphabetical
+  results.sort((a, b) => {
+    const aDeprecated = a.entry.isDeprecated ? 1 : 0;
+    const bDeprecated = b.entry.isDeprecated ? 1 : 0;
+    if (aDeprecated !== bDeprecated) return aDeprecated - bDeprecated;
+    if (b.score !== a.score) return b.score - a.score;
+    const typeCmp = a.entry.type.localeCompare(b.entry.type);
+    if (typeCmp !== 0) return typeCmp;
+    return a.entry.member.localeCompare(b.entry.member);
+  });
+
+  return results.slice(0, MAX_RESULTS).map(r => r.entry);
+}
+
+// ── Rendering ───────────────────────────────────
+function render(entries) {
+  filtered = entries;
+  selectedIdx = -1;
+  expandedIdx = -1;
+
+  if (entries.length === 0 && !searchInput.value.trim()) {
+    resultsEl.innerHTML = '';
+    emptyState.classList.remove('hidden');
+    resultCount.textContent = '';
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+  resultCount.textContent = entries.length >= MAX_RESULTS
+    ? `${MAX_RESULTS}+ results`
+    : `${entries.length} result${entries.length !== 1 ? 's' : ''}`;
+
+  const fragment = document.createDocumentFragment();
+
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const row = document.createElement('div');
+    row.className = 'result-row' + (e.isDeprecated ? ' deprecated' : '');
+    row.setAttribute('role', 'option');
+    row.dataset.index = i;
+
+    const badgeClass = {
+      'function': 'fn', 'extension': 'ext', 'property': 'prop', 'constructor': 'ctor',
+      'extension property': 'ext'
+    }[e.kind] || 'fn';
+
+    const badgeLabel = {
+      'function': 'fn', 'extension': 'ext', 'property': 'val', 'constructor': 'new',
+      'extension property': 'ext'
+    }[e.kind] || 'fn';
+
+    const operatorSuffix = e.operatorSymbol
+      ? `<span class="operator-sym">${escapeHtml(e.operatorSymbol)}</span>`
+      : '';
+
+    const params = abbreviateParams(e);
+    const returnStr = e.returnType && e.returnType !== 'Unit'
+      ? `→ ${e.returnType}` : '';
+
+    row.innerHTML = `
+      <span class="kind-badge ${badgeClass}">${badgeLabel}</span>
+      <span class="type-tag">${escapeHtml(e.type)}.</span>
+      <span class="member-name">${escapeHtml(e.member)}</span>
+      ${operatorSuffix}
+      <span class="sig-abbrev">${escapeHtml(params)}</span>
+      <span class="return-type">${escapeHtml(returnStr)}</span>
+    `;
+
+    row.addEventListener('click', () => toggleExpand(i));
+    fragment.appendChild(row);
+
+    // Detail panel (hidden by default)
+    const detail = document.createElement('div');
+    detail.className = 'result-detail';
+    detail.dataset.detailIndex = i;
+    detail.innerHTML = buildDetailHTML(e);
+    fragment.appendChild(detail);
+  }
+
+  resultsEl.innerHTML = '';
+  resultsEl.appendChild(fragment);
+}
+
+function abbreviateParams(e) {
+  if (e.kind === 'property') return '';
+  if (!e.params || e.params.length === 0) return '()';
+  const inner = e.params.map(p => {
+    let s = p.name + ': ' + p.type;
+    if (p.hasDefault) s += ' = …';
+    return s;
+  }).join(', ');
+  return `(${inner})`;
+}
+
+function buildDetailHTML(e) {
+  let html = '';
+
+  // Highlighted signature
+  html += `<div class="detail-signature">${highlightSignature(e.signature)}</div>`;
+
+  // Modifier tags + meta
+  const tags = [];
+  if (e.isInline) tags.push('<span class="modifier-tag inline-tag">inline</span>');
+  if (e.isInfix) tags.push('<span class="modifier-tag infix-tag">infix</span>');
+  if (e.isOperator) tags.push('<span class="modifier-tag operator-tag">operator</span>');
+  if (e.isSuspend) tags.push('<span class="modifier-tag suspend-tag">suspend</span>');
+
+  html += '<div class="detail-meta">';
+  if (tags.length) html += `<div class="detail-meta-item">${tags.join(' ')}</div>`;
+  html += `<div class="detail-meta-item"><span class="detail-meta-label">Kind</span><span class="detail-meta-value">${e.kind}</span></div>`;
+  html += `<div class="detail-meta-item"><span class="detail-meta-label">Package</span><span class="detail-meta-value">${e.packageName}</span></div>`;
+  if (e.returnType && e.returnType !== 'Unit') {
+    html += `<div class="detail-meta-item"><span class="detail-meta-label">Returns</span><span class="detail-meta-value">${escapeHtml(e.returnType)}</span></div>`;
+  }
+  if (e.operatorSymbol) {
+    html += `<div class="detail-meta-item"><span class="detail-meta-label">Operator</span><span class="detail-meta-value">${escapeHtml(e.operatorSymbol)}</span></div>`;
+  }
+  if (e.since) {
+    html += `<div class="detail-meta-item"><span class="detail-meta-label">Since</span><span class="detail-meta-value">${escapeHtml(e.since)}</span></div>`;
+  }
+  html += '</div>';
+
+  // Parameters
+  if (e.params && e.params.length > 0) {
+    html += '<div class="detail-params">';
+    html += '<div class="detail-params-title">Parameters</div>';
+    for (const p of e.params) {
+      html += `<div class="detail-param-row">
+        <span class="detail-param-name">${escapeHtml(p.name)}</span>
+        <span class="detail-param-type">${escapeHtml(p.type)}</span>
+        ${p.hasDefault ? '<span class="detail-param-default">= default</span>' : ''}
+        ${p.isVararg ? '<span class="detail-param-default">vararg</span>' : ''}
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Description (for Phase 2)
+  if (e.summary || e.description) {
+    const text = e.description || e.summary;
+    html += `<div class="detail-description">${escapeHtml(text)}</div>`;
+  }
+
+  return html;
+}
+
+// ── Signature highlighting ──────────────────────
+function highlightSignature(sig) {
+  const keywords = ['fun', 'val', 'var', 'inline', 'infix', 'operator', 'suspend', 'constructor', 'vararg'];
+  let result = escapeHtml(sig);
+
+  // Keywords
+  for (const kw of keywords) {
+    result = result.replace(
+      new RegExp(`\\b(${kw})\\b`, 'g'),
+      '<span class="kw">$1</span>'
+    );
+  }
+
+  // Generic type parameters <T>, <K, V>, <out T : Comparable<T>>
+  result = result.replace(
+    /(&lt;[^&]*?&gt;)/g,
+    (match) => `<span class="tp">${match}</span>`
+  );
+
+  // Function name — the word right before (
+  result = result.replace(
+    /(\w+)(\()/g,
+    '<span class="fn">$1</span>$2'
+  );
+
+  return result;
+}
+
+// ── Type bar ────────────────────────────────────
+function updateTypeBar(types, activePrefix) {
+  if (types.length === 0) {
+    typeBar.classList.remove('visible');
+    return;
+  }
+
+  typeBar.classList.add('visible');
+
+  // Only show first 30 matching types
+  const shown = types.slice(0, 30);
+  typeChips.innerHTML = shown.map(t => {
+    const isActive = t.toLowerCase() === activePrefix.toLowerCase();
+    return `<button class="type-chip ${isActive ? 'active' : ''}" data-type="${escapeHtml(t)}">${escapeHtml(t)}</button>`;
+  }).join('');
+}
+
+typeChips.addEventListener('click', (e) => {
+  const chip = e.target.closest('.type-chip');
+  if (!chip) return;
+  const typeName = chip.dataset.type;
+  searchInput.value = typeName + '.';
+  searchInput.focus();
+  doSearch();
+});
+
+// ── Expand/collapse ─────────────────────────────
+function toggleExpand(idx) {
+  const details = resultsEl.querySelectorAll('.result-detail');
+  const rows = resultsEl.querySelectorAll('.result-row');
+
+  if (expandedIdx === idx) {
+    // Collapse
+    details[idx].classList.remove('open');
+    expandedIdx = -1;
+  } else {
+    // Collapse previous
+    if (expandedIdx >= 0 && details[expandedIdx]) {
+      details[expandedIdx].classList.remove('open');
+    }
+    // Expand new
+    details[idx].classList.add('open');
+    expandedIdx = idx;
+  }
+
+  // Update selection
+  setSelected(idx);
+}
+
+function setSelected(idx) {
+  const rows = resultsEl.querySelectorAll('.result-row');
+  if (selectedIdx >= 0 && rows[selectedIdx]) {
+    rows[selectedIdx].classList.remove('selected');
+  }
+  selectedIdx = idx;
+  if (idx >= 0 && rows[idx]) {
+    rows[idx].classList.add('selected');
+    scrollIntoViewIfNeeded(rows[idx]);
+  }
+}
+
+function scrollIntoViewIfNeeded(el) {
+  const container = resultsEl;
+  const elTop = el.offsetTop;
+  const elBottom = elTop + el.offsetHeight;
+  const viewTop = container.scrollTop;
+  const viewBottom = viewTop + container.clientHeight;
+
+  if (elTop < viewTop) {
+    container.scrollTop = elTop - 4;
+  } else if (elBottom > viewBottom) {
+    container.scrollTop = elBottom - container.clientHeight + 4;
+  }
+}
+
+// ── Keyboard navigation ─────────────────────────
+searchInput.addEventListener('keydown', (e) => {
+  const count = filtered.length;
+  if (!count) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    setSelected(selectedIdx < count - 1 ? selectedIdx + 1 : 0);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    setSelected(selectedIdx > 0 ? selectedIdx - 1 : count - 1);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (selectedIdx >= 0) toggleExpand(selectedIdx);
+    else if (count > 0) toggleExpand(0);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    if (expandedIdx >= 0) {
+      const details = resultsEl.querySelectorAll('.result-detail');
+      if (details[expandedIdx]) details[expandedIdx].classList.remove('open');
+      expandedIdx = -1;
+    } else {
+      searchInput.value = '';
+      doSearch();
+    }
+  }
+});
+
+// ── Debounced search ────────────────────────────
+let debounceTimer = null;
+searchInput.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(doSearch, 120);
+});
+
+function doSearch() {
+  const raw = searchInput.value;
+  const entries = search(raw);
+  render(entries);
+  updateHash(raw);
+}
+
+// ── URL hash state ──────────────────────────────
+function updateHash(query) {
+  const hash = query ? '#' + encodeURIComponent(query) : '';
+  if (window.location.hash !== hash) {
+    history.replaceState(null, '', hash || window.location.pathname);
+  }
+}
+
+function initFromHash() {
+  const hash = window.location.hash.slice(1);
+  if (hash) {
+    const query = decodeURIComponent(hash);
+    searchInput.value = query;
+    doSearch();
+  }
+}
+
+window.addEventListener('hashchange', () => {
+  const hash = window.location.hash.slice(1);
+  const query = decodeURIComponent(hash);
+  if (searchInput.value !== query) {
+    searchInput.value = query;
+    doSearch();
+  }
+});
+
+// ── Example buttons ─────────────────────────────
+document.querySelectorAll('.example-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    searchInput.value = btn.dataset.query;
+    searchInput.focus();
+    doSearch();
+  });
+});
+
+// ── Utility ─────────────────────────────────────
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}

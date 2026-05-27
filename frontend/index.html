@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kotlin stdlib — Quick Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="toolbar">
+      <div class="toolbar-left">
+        <img class="logo-icon" src="kotlin-icon.png" alt="Kotlin">
+        <span class="logo-text">stdlib search</span>
+      </div>
+      <div class="toolbar-center">
+        <div class="search-wrapper">
+          <svg class="search-icon" viewBox="0 0 16 16" width="14" height="14"><circle cx="6.5" cy="6.5" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="10" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <input
+            type="text"
+            id="search"
+            class="search-input"
+            placeholder="Type.method — e.g. List.filter, map, String."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <div class="search-hint" id="searchHint">
+            <kbd>↑↓</kbd> navigate <kbd>↵</kbd> expand <kbd>esc</kbd> clear
+          </div>
+        </div>
+      </div>
+      <div class="toolbar-right">
+        <span class="result-count" id="resultCount"></span>
+      </div>
+    </header>
+
+    <div class="type-bar" id="typeBar">
+      <div class="type-chips" id="typeChips"></div>
+    </div>
+
+    <main class="results-container">
+      <div class="results-list" id="results" role="listbox" aria-label="Search results"></div>
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon"><img src="kotlin-icon.png" alt="Kotlin"></div>
+        <div class="empty-title">Kotlin Standard Library Reference</div>
+        <div class="empty-hint">Start typing to search 388 types and 13,000+ members</div>
+        <div class="empty-examples">
+          <button class="example-btn" data-query="List.">List.</button>
+          <button class="example-btn" data-query="map">map</button>
+          <button class="example-btn" data-query="String.split">String.split</button>
+          <button class="example-btn" data-query="Map.get">Map.get</button>
+          <button class="example-btn" data-query="Sequence.">Sequence.</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
