@@ -1,40 +1,31 @@
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import parser.InheritanceResolver
 import parser.MetadataParser
+import java.io.File
+
+val json = Json {
+    prettyPrint = false
+    encodeDefaults = false
+}
 
 fun main() {
     val parser = MetadataParser()
-    val result = parser.parseStdlib()
+    val parseResult = parser.parseStdlib()
 
-    println("\n=== Types Found: ${result.types.size} ===")
-    result.types.values
-        .sortedBy { it.qualifiedName }
-        .forEach { type ->
-            val memberCount = type.declaredMembers.size
-            val supers = if (type.supertypes.isNotEmpty()) {
-                " : " + type.supertypes.joinToString(", ") { it.substringAfterLast('.') }
-            } else ""
-            val typeParamStr = if (type.typeParameters.isNotEmpty()) {
-                "<" + type.typeParameters.joinToString(", ") + ">"
-            } else ""
-            println("  ${type.kind} ${type.name}$typeParamStr$supers  ($memberCount members)")
-        }
+    val resolver = InheritanceResolver()
+    val entries = resolver.resolve(parseResult)
 
-    println("\n=== Extension Functions Found: ${result.extensionFunctions.size} ===")
-    val byReceiver = result.extensionFunctions.groupBy { it.receiverType ?: "?" }
-    byReceiver.entries.sortedBy { it.key }.forEach { (receiver, fns) ->
-        println("  ${receiver.substringAfterLast('.')}: ${fns.size} extensions")
-    }
+    val sorted = entries.sortedWith(compareBy({ it.type }, { it.member }))
 
-    println("\n=== Sample Signatures ===")
-    result.types["kotlin.collections.List"]?.let { list ->
-        println("  List members (first 10):")
-        list.declaredMembers.take(10).forEach { m ->
-            println("    ${m.signature}")
-        }
-    }
-    result.extensionFunctions
-        .filter { it.receiverType == "kotlin.collections.List" || it.receiverType == "kotlin.collections.Iterable" }
-        .take(10)
-        .forEach { m ->
-            println("  EXT: ${m.signature}")
-        }
+    val outputFile = File("methods.json")
+    outputFile.writeText(json.encodeToString(sorted))
+
+    val fileSizeKb = outputFile.length() / 1024
+    println("\nWrote ${sorted.size} entries to ${outputFile.absolutePath} (${fileSizeKb} KB)")
+
+    // Quick stats
+    val byType = sorted.groupBy { it.type }
+    println("${byType.size} types")
+    println("Top 10: ${byType.entries.sortedByDescending { it.value.size }.take(10).joinToString { "${it.key}(${it.value.size})" }}")
 }

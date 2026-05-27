@@ -7,24 +7,13 @@ import kotlin.metadata.jvm.*
 import java.io.File
 import java.util.jar.JarFile
 
-class MetadataParser(
-    private val targetPackages: Set<String> = setOf(
-        "kotlin",
-        "kotlin.collections",
-        "kotlin.text",
-        "kotlin.ranges",
-        "kotlin.sequences",
-        "kotlin.comparisons",
-        "kotlin.io",
-    )
-) {
+class MetadataParser {
     fun parseStdlib(): ParseResult {
         val types = mutableMapOf<String, TypeInfo>()
         val extensionFunctions = mutableListOf<MemberInfo>()
 
         val jarPath = findStdlibJarPath()
         println("Scanning: $jarPath")
-
         val jar = JarFile(File(jarPath))
         var classCount = 0
         var skipCount = 0
@@ -67,6 +56,19 @@ class MetadataParser(
 
         jar.close()
         println("Processed $classCount class entries, skipped $skipCount")
+
+        // Parse .kotlin_builtins for mapped types (List, Map, String, Int, etc.)
+        val builtinsParser = BuiltinsParser()
+        val builtinsTypes = builtinsParser.parseBuiltins(jarPath)
+        println("Parsed ${builtinsTypes.size} builtin types")
+
+        // Merge: builtins provide mapped types not in metadata; metadata wins if both exist
+        for ((qualName, builtinType) in builtinsTypes) {
+            if (qualName !in types) {
+                types[qualName] = builtinType
+            }
+        }
+
         return ParseResult(types, extensionFunctions)
     }
 
@@ -81,7 +83,6 @@ class MetadataParser(
         val packageName = qualifiedName.substringBeforeLast('.', "")
         val simpleName = kmClass.name.substringAfterLast('/').replace('$', '.')
 
-        if (!isTargetPackage(packageName)) return null
         if (kmClass.visibility == Visibility.PRIVATE || kmClass.visibility == Visibility.INTERNAL) return null
 
         val classTypeParams = buildTypeParamMap(kmClass.typeParameters)
@@ -125,7 +126,6 @@ class MetadataParser(
             if (fn.visibility == Visibility.PRIVATE || fn.visibility == Visibility.INTERNAL) continue
             val receiver = fn.receiverParameterType ?: continue
             val receiverName = resolveClassifierName(receiver.classifier) ?: continue
-            if (!isTargetPackage(receiverName.substringBeforeLast('.', ""))) continue
 
             val typeParams = buildTypeParamMap(fn.typeParameters)
             val member = functionToMemberInfo(fn, typeParams, receiverName)
@@ -346,6 +346,4 @@ class MetadataParser(
 
     private fun isFunctionType(name: String): Boolean =
         name.matches(Regex("kotlin/Function\\d+")) || name.matches(Regex("kotlin/coroutines/SuspendFunction\\d+"))
-
-    private fun isTargetPackage(packageName: String): Boolean = packageName in targetPackages
 }
