@@ -299,11 +299,12 @@ body {
   display: flex;
   align-items: baseline;
   padding: 8px 24px;
-  gap: 12px;
+  gap: 10px;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: background 0.08s;
   min-height: 40px;
+  flex-wrap: nowrap;
 }
 
 .result-row:hover {
@@ -391,8 +392,8 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 1;
   min-width: 0;
-  flex: 1;
 }
 
 /* Return type */
@@ -404,6 +405,13 @@ body {
   white-space: nowrap;
 }
 
+/* Separator between return type and summary */
+.sig-sep {
+  color: var(--border-strong);
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
 /* Summary in result row */
 .sig-summary {
   font-family: var(--font-sans);
@@ -412,8 +420,9 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 1;
   min-width: 0;
-  flex: 1;
+  margin-left: 4px;
 }
 
 /* Param doc in detail panel */
@@ -539,8 +548,58 @@ body {
 .detail-description {
   margin-top: 14px;
   font-size: 16px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--text-secondary);
+}
+
+.detail-description p {
+  margin: 0 0 8px 0;
+}
+
+.detail-description p:last-child {
+  margin-bottom: 0;
+}
+
+.kdoc-code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--syn-function);
+}
+
+.kdoc-codeblock {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.kdoc-codeblock code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.kdoc-link {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.kdoc-link:hover {
+  text-decoration: underline;
+}
+
+.detail-param-doc .kdoc-code {
+  font-size: 0.85em;
 }
 
 .modifier-tag {
@@ -625,6 +684,32 @@ body {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--accent-kotlin);
+}
+
+/* ── Footer ──────────────────────────────────── */
+
+.footer {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  z-index: 5;
+}
+
+.footer a {
+  color: var(--text-tertiary);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.footer.hidden {
+  display: none;
 }
 
 /* ── Mobile ──────────────────────────────────── */

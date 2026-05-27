@@ -17,6 +17,7 @@ const resultsEl = document.getElementById('results');
 const resultCount = document.getElementById('resultCount');
 const emptyState = document.getElementById('emptyState');
 const typeBar = document.getElementById('typeBar');
+const footer = document.getElementById('footer');
 const typeChips = document.getElementById('typeChips');
 
 // ── Bootstrap ───────────────────────────────────
@@ -160,11 +161,13 @@ function render(entries) {
   if (entries.length === 0 && !searchInput.value.trim()) {
     resultsEl.innerHTML = '';
     emptyState.classList.remove('hidden');
+    footer.classList.remove('hidden');
     resultCount.textContent = '';
     return;
   }
 
   emptyState.classList.add('hidden');
+  footer.classList.add('hidden');
   resultCount.textContent = entries.length >= MAX_RESULTS
     ? `${MAX_RESULTS}+ results`
     : `${entries.length} result${entries.length !== 1 ? 's' : ''}`;
@@ -197,7 +200,7 @@ function render(entries) {
       ? `→ ${e.returnType}` : '';
 
     const summaryStr = e.summary
-      ? `<span class="sig-summary">${escapeHtml(e.summary)}</span>`
+      ? `<span class="sig-sep">—</span><span class="sig-summary">${escapeHtml(e.summary)}</span>`
       : '';
 
     row.innerHTML = `
@@ -269,7 +272,7 @@ function buildDetailHTML(e) {
     html += '<div class="detail-params">';
     html += '<div class="detail-params-title">Parameters</div>';
     for (const p of e.params) {
-      const paramDocStr = p.doc ? `<div class="detail-param-doc">${escapeHtml(p.doc)}</div>` : '';
+      const paramDocStr = p.doc ? `<div class="detail-param-doc">${renderKDoc(p.doc)}</div>` : '';
       html += `<div class="detail-param-row">
         <span class="detail-param-name">${escapeHtml(p.name)}</span>
         <span class="detail-param-type">${escapeHtml(p.type)}</span>
@@ -280,13 +283,46 @@ function buildDetailHTML(e) {
     html += '</div>';
   }
 
-  // Description (for Phase 2)
-  if (e.summary || e.description) {
+  if (e.description || e.summary) {
     const text = e.description || e.summary;
-    html += `<div class="detail-description">${escapeHtml(text)}</div>`;
+    html += `<div class="detail-description">${renderKDoc(text)}</div>`;
   }
 
   return html;
+}
+
+// ── KDoc rendering ──────────────────────────────
+function renderKDoc(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+
+  // Code blocks: ```code``` → <pre><code>
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+    `<pre class="kdoc-codeblock"><code>${code.trim()}</code></pre>`
+  );
+
+  // Inline code: `code` → <code>
+  html = html.replace(/`([^`]+)`/g, '<code class="kdoc-code">$1</code>');
+
+  // KDoc symbol links: [name] → <code>name</code>
+  // But skip markdown-style [text](url) links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="kdoc-link" href="$2">$1</a>');
+  html = html.replace(/\[(\w+(?:\.\w+)*)\]/g, '<code class="kdoc-code">$1</code>');
+
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+  // Italic: *text* or _text_ (but not inside words with underscores)
+  html = html.replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '<em>$1</em>');
+
+  // Paragraphs: double newlines
+  html = html.replace(/\n\n+/g, '</p><p>');
+
+  // Single newlines → <br> (within paragraphs)
+  html = html.replace(/\n/g, '<br>');
+
+  return `<p>${html}</p>`;
 }
 
 // ── Signature highlighting ──────────────────────
