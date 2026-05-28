@@ -8,11 +8,10 @@ import java.io.File
 import java.util.jar.JarFile
 
 class MetadataParser {
-    fun parseStdlib(): ParseResult {
+    fun parseStdlib(jarPath: String): ParseResult {
         val types = mutableMapOf<String, TypeInfo>()
         val extensionFunctions = mutableListOf<MemberInfo>()
 
-        val jarPath = findStdlibJarPath()
         println("Scanning: $jarPath")
         val jar = JarFile(File(jarPath))
         var classCount = 0
@@ -29,8 +28,8 @@ class MetadataParser {
             if (lastPart.isNotEmpty() && lastPart[0].isDigit()) continue
 
             try {
-                val clazz = Class.forName(className, false, Thread.currentThread().contextClassLoader)
-                val metadata = clazz.getAnnotation(Metadata::class.java) ?: continue
+                val metadata = jar.getInputStream(entry).use { MetadataAnnotationReader.read(it.readBytes()) }
+                    ?: continue
                 val parsed = KotlinClassMetadata.readLenient(metadata)
 
                 when (parsed) {
@@ -70,12 +69,6 @@ class MetadataParser {
         }
 
         return ParseResult(types, extensionFunctions)
-    }
-
-    private fun findStdlibJarPath(): String {
-        val url = Unit::class.java.protectionDomain?.codeSource?.location
-            ?: throw IllegalStateException("Cannot locate kotlin-stdlib JAR")
-        return url.toURI().path
     }
 
     private fun processClass(kmClass: KmClass): TypeInfo? {

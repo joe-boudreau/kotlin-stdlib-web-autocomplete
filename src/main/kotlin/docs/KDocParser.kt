@@ -23,21 +23,23 @@ data class KDocKey(
 
 class KDocParser {
 
-    fun parseSourcesJar(jarPath: String): Map<KDocKey, KDocEntry> {
-        val jar = JarFile(File(jarPath))
+    fun parseSourcesJar(vararg jarPaths: String): Map<KDocKey, KDocEntry> {
         val result = mutableMapOf<KDocKey, KDocEntry>()
 
-        for (entry in jar.entries().asSequence()) {
-            if (!entry.name.endsWith(".kt")) continue
-            val source = jar.getInputStream(entry).bufferedReader().readText()
-            val entries = parseSource(source)
-            for (e in entries) {
-                val key = KDocKey(e.memberName, e.receiverType, e.paramCount)
-                result.putIfAbsent(key, e)
+        for (jarPath in jarPaths) {
+            val jar = JarFile(File(jarPath))
+            for (entry in jar.entries().asSequence()) {
+                if (!entry.name.endsWith(".kt")) continue
+                val source = jar.getInputStream(entry).bufferedReader().readText()
+                val entries = parseSource(source)
+                for (e in entries) {
+                    val key = KDocKey(e.memberName, e.receiverType, e.paramCount)
+                    result.putIfAbsent(key, e)
+                }
             }
+            jar.close()
         }
 
-        jar.close()
         println("Parsed KDoc from ${result.size} declarations")
         return result
     }

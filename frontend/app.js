@@ -8,6 +8,8 @@ let allTypes = [];    // sorted unique type names
 let filtered = [];    // current search results
 let selectedIdx = -1;
 let expandedIdx = -1;
+let currentVersion = null;     // selected Kotlin version
+let availableVersions = [];    // versions from the manifest
 
 const MAX_RESULTS = 200;
 
@@ -20,6 +22,7 @@ const typeBar = document.getElementById('typeBar');
 const footer = document.getElementById('footer');
 const typeChips = document.getElementById('typeChips');
 const themeToggle = document.getElementById('themeToggle');
+const versionSelect = document.getElementById('versionSelect');
 
 // ── Theme toggle ────────────────────────────────
 themeToggle.addEventListener('click', () => {
@@ -29,14 +32,26 @@ themeToggle.addEventListener('click', () => {
 });
 
 // ── Bootstrap ───────────────────────────────────
-fetch('methods.json')
+const LS_VERSION_KEY = 'kotlinVersion';
+
+fetch('data/versions.json')
   .then(r => {
-    if (!r.ok) throw new Error(`Failed to load methods.json: ${r.status}`);
+    if (!r.ok) throw new Error(`Failed to load versions.json: ${r.status}`);
     return r.json();
   })
-  .then(data => {
-    allEntries = data;
-    buildIndex();
+  .then(manifest => {
+    availableVersions = manifest.versions;
+    populateVersionSelect(manifest);
+
+    const fromHash = parseHash().version;
+    const stored = localStorage.getItem(LS_VERSION_KEY);
+    const initial = [fromHash, stored, manifest.default]
+      .find(v => v && availableVersions.includes(v)) || manifest.default;
+
+    versionSelect.value = initial;
+    return loadVersion(initial);
+  })
+  .then(() => {
     initFromHash();
     searchInput.focus();
   })
@@ -45,6 +60,37 @@ fetch('methods.json')
     emptyState.querySelector('.empty-hint').textContent = err.message;
     emptyState.querySelector('.empty-examples').style.display = 'none';
   });
+
+function populateVersionSelect(manifest) {
+  versionSelect.innerHTML = '';
+  for (const v of manifest.versions) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    versionSelect.appendChild(opt);
+  }
+}
+
+// Fetch the dataset for a version and rebuild the index. Returns a promise.
+function loadVersion(version) {
+  currentVersion = version;
+  localStorage.setItem(LS_VERSION_KEY, version);
+  return fetch(`data/methods-${version}.json`)
+    .then(r => {
+      if (!r.ok) throw new Error(`Failed to load methods-${version}.json: ${r.status}`);
+      return r.json();
+    })
+    .then(data => {
+      allEntries = data;
+      buildIndex();
+    });
+}
+
+versionSelect.addEventListener('change', () => {
+  loadVersion(versionSelect.value)
+    .then(() => doSearch())
+    .catch(err => console.error(err));
+});
 
 function buildIndex() {
   typeIndex = {};
@@ -287,7 +333,10 @@ function buildDetailHTML(e) {
 
   if (e.description || e.summary) {
     const text = e.description || e.summary;
-    html += `<div class="detail-description">${renderKDoc(text)}</div>`;
+    html += '<div class="detail-description">';
+    html += '<div class="detail-description-title">Description</div>';
+    html += `<div class="detail-description-text">${renderKDoc(text)}</div>`;
+    html += '</div>';
   }
 
   return html;
@@ -473,25 +522,44 @@ function doSearch() {
 }
 
 // ── URL hash state ──────────────────────────────
+// Hash format: #<version>/<query>  (e.g. #2.3.21/List.filter)
+function parseHash() {
+  const h = window.location.hash.slice(1);
+  if (!h) return { version: null, query: '' };
+  const slash = h.indexOf('/');
+  const first = slash === -1 ? h : h.slice(0, slash);
+  if (availableVersions.includes(first)) {
+    return { version: first, query: slash === -1 ? '' : decodeURIComponent(h.slice(slash + 1)) };
+  }
+  // Legacy bookmark with no version prefix: treat the whole hash as the query.
+  return { version: null, query: decodeURIComponent(h) };
+}
+
 function updateHash(query) {
-  const hash = query ? '#' + encodeURIComponent(query) : '';
+  const hash = '#' + currentVersion + (query ? '/' + encodeURIComponent(query) : '');
   if (window.location.hash !== hash) {
-    history.replaceState(null, '', hash || window.location.pathname);
+    history.replaceState(null, '', hash);
   }
 }
 
 function initFromHash() {
-  const hash = window.location.hash.slice(1);
-  if (hash) {
-    const query = decodeURIComponent(hash);
+  const { query } = parseHash();
+  if (query) {
     searchInput.value = query;
-    doSearch();
   }
+  doSearch();
 }
 
 window.addEventListener('hashchange', () => {
-  const hash = window.location.hash.slice(1);
-  const query = decodeURIComponent(hash);
+  const { version, query } = parseHash();
+  if (version && version !== currentVersion) {
+    versionSelect.value = version;
+    loadVersion(version).then(() => {
+      searchInput.value = query;
+      doSearch();
+    });
+    return;
+  }
   if (searchInput.value !== query) {
     searchInput.value = query;
     doSearch();

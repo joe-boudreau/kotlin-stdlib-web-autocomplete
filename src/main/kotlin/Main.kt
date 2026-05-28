@@ -11,20 +11,24 @@ val json = Json {
     encodeDefaults = false
 }
 
-fun main() {
+fun main(args: Array<String>) {
+    require(args.size >= 3) {
+        "Usage: <stdlib-binary-jar> <output-json-path> <sources-jar>..."
+    }
+    val binaryJar = args[0]
+    val outputPath = args[1]
+    val sourcesJars = args.drop(2).toTypedArray()
+
     // Phase 1: Parse metadata + builtins
     val parser = MetadataParser()
-    val parseResult = parser.parseStdlib()
+    val parseResult = parser.parseStdlib(binaryJar)
 
     val resolver = InheritanceResolver()
     val entries = resolver.resolve(parseResult)
 
     // Phase 2: Parse KDoc and merge
-    val sourcesJar = System.getenv("STDLIB_SOURCES_JAR")
-        ?: error("STDLIB_SOURCES_JAR environment variable not set")
-
     val kdocParser = KDocParser()
-    val kdocs = kdocParser.parseSourcesJar(sourcesJar)
+    val kdocs = kdocParser.parseSourcesJar(*sourcesJars)
 
     val merger = DocMerger()
     val documented = merger.merge(entries, kdocs)
@@ -32,7 +36,8 @@ fun main() {
     // Serialize
     val sorted = documented.sortedWith(compareBy({ it.type }, { it.member }))
 
-    val outputFile = File("methods.json")
+    val outputFile = File(outputPath)
+    outputFile.parentFile?.mkdirs()
     outputFile.writeText(json.encodeToString(sorted))
 
     val fileSizeKb = outputFile.length() / 1024

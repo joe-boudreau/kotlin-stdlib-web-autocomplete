@@ -25,11 +25,13 @@ A browser-based autocomplete and documentation reference for the entire Kotlin s
 ## How to Build
 
 ```bash
-./gradlew run                    # generates methods.json in project root
-cp methods.json frontend/        # copy to frontend directory
+./gradlew generateAll            # generates frontend/data/methods-<version>.json for all versions + versions.json
+./gradlew run                    # single-version: methods.json in project root (build's own stdlib)
 ```
 
-The Gradle build automatically resolves `kotlin-stdlib-sources.jar` via a custom `stdlibSources` configuration and passes it as `STDLIB_SOURCES_JAR` env var to the run task.
+`generateAll` loops the versions in `stdlibVersions` (build.gradle.kts). For each it resolves `kotlin-stdlib:<v>` (binary), `kotlin-stdlib:<v>:sources`, and `kotlin-stdlib-common:<v>:sources` via detached configurations, then runs `MainKt <binary-jar> <output-path> <sources-jar>...`. The common-sources jar is needed for pre-2.0 versions, which kept generated extension sources (`_Collections.kt`, `_Strings.kt`, …) in `kotlin-stdlib-common`; 2.x merged them into the main sources jar.
+
+The parser reads the `@Metadata` annotation straight from `.class` bytes via ASM (`MetadataAnnotationReader`), so it can parse any version's jar regardless of the build's own classpath. `kotlin-metadata-jvm` must be pinned ≥ the newest version parsed (currently 2.3.21) — readers are backward-compatible with older metadata.
 
 To serve locally: `cd frontend && python3 -m http.server 8090`
 
@@ -137,7 +139,7 @@ Key features:
 
 - **Kotlin 2.3.21** with `kotlin-metadata-jvm` for metadata parsing
 - **kotlinx-serialization-json** for JSON output
-- **ASM 9.10.1** (dependency, not actively used — could be removed)
+- **ASM 9.10.1** — reads `@Metadata` from `.class` bytes (`MetadataAnnotationReader`) so the parser isn't tied to the build's classpath
 - **Gradle 9.3** with JVM toolchain 25
 - **Frontend**: vanilla HTML/CSS/JS
 
