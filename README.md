@@ -29,7 +29,7 @@ Open http://localhost:8090
 | `List.` | Browse all `List` members |
 | `Mut` | Matches types starting with "Mut" (MutableList, MutableMap, ...) |
 
-Keyboard: **↑↓** navigate, **Enter** expand/collapse details, **Escape** clear
+Keyboard: **↓** from the search box jumps to the type chips (**←→** to move between them); **↓** again drops into the method results (**↑↓** to move). **Enter** selects a type chip (scopes the search) or expands/collapses a result. **Escape** steps back out / clears.
 
 ## How It Works
 

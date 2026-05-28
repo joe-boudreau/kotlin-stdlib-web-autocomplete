@@ -144,7 +144,7 @@ Plain HTML/CSS/JS, no framework. Dark theme inspired by IntelliJ Darcula.
 Key features:
 - **Two-mode search**: `List.filter` (type-scoped), `map` (global), `List.` (all members)
 - **Fuzzy matching** with scoring (prefix > consecutive chars > sparse match)
-- **Keyboard navigation**: ↑↓ arrows, Enter to expand, Escape to clear
+- **Keyboard navigation**: two zones reached from the search box — type chips (↓ to enter, ←→ to move) then method results (↓ again, ↑↓ to move). Enter selects a chip (scopes the search) or expands a result; Escape steps back/clears. Chips are only navigable while still choosing a type (`typesNavigable`); once an exact type is committed, ↓ skips straight to results.
 - **KDoc rendering**: converts KDoc markdown to HTML (inline code, code blocks, bold, symbol links)
 - **Type bar**: clickable chips for matching types
 - **Operator symbols** shown alongside method names

@@ -8,6 +8,8 @@ let allTypes = [];    // sorted unique type names
 let filtered = [];    // current search results
 let selectedIdx = -1;
 let expandedIdx = -1;
+let chipIdx = -1;        // keyboard-selected type chip, -1 = none
+let typesNavigable = false; // true while still choosing among candidate types (not yet committed to an exact type)
 let currentVersion = null;     // selected Kotlin version
 let availableVersions = [];    // versions from the manifest
 
@@ -153,6 +155,7 @@ function matchType(typeName, query) {
 function search(raw) {
   const { type, query } = parseQuery(raw);
   let results = [];
+  typesNavigable = false;
 
   if (type) {
     // Type-scoped search. If the text before the dot is an exact type name,
@@ -166,6 +169,8 @@ function search(raw) {
     }
 
     updateTypeBar(matchingTypes, type);
+    // Once an exact type is committed, the chips aren't a navigation target — methods are.
+    if (!exact) typesNavigable = true;
 
     for (const t of matchingTypes) {
       const entries = typeIndex[t] || [];
@@ -180,7 +185,9 @@ function search(raw) {
     }
   } else if (query) {
     // Global search — also surface types whose names prefix-match the query
-    updateTypeBar(allTypes.filter(t => matchType(t, query)), query);
+    const typeMatches = allTypes.filter(t => matchType(t, query));
+    updateTypeBar(typeMatches, query);
+    if (typeMatches.length > 0) typesNavigable = true;
 
     for (const e of allEntries) {
       const score = fuzzyScore(e.member, query);
@@ -210,6 +217,7 @@ function render(entries) {
   filtered = entries;
   selectedIdx = -1;
   expandedIdx = -1;
+  chipIdx = -1;
 
   if (entries.length === 0 && !searchInput.value.trim()) {
     resultsEl.innerHTML = '';
@@ -429,11 +437,24 @@ function updateTypeBar(types, activePrefix) {
 typeChips.addEventListener('click', (e) => {
   const chip = e.target.closest('.type-chip');
   if (!chip) return;
-  const typeName = chip.dataset.type;
+  selectChipType(chip.dataset.type);
+});
+
+function selectChipType(typeName) {
   searchInput.value = typeName + '.';
   searchInput.focus();
   doSearch();
-});
+}
+
+function setChip(idx) {
+  const chips = typeChips.querySelectorAll('.type-chip');
+  if (chipIdx >= 0 && chips[chipIdx]) chips[chipIdx].classList.remove('kbd');
+  chipIdx = idx;
+  if (idx >= 0 && chips[idx]) {
+    chips[idx].classList.add('kbd');
+    chips[idx].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+}
 
 // ── Expand/collapse ─────────────────────────────
 function toggleExpand(idx) {
@@ -486,22 +507,55 @@ function scrollIntoViewIfNeeded(el) {
 
 // ── Keyboard navigation ─────────────────────────
 searchInput.addEventListener('keydown', (e) => {
+  const chips = typeChips.querySelectorAll('.type-chip');
+  const chipCount = typesNavigable ? chips.length : 0;
   const count = filtered.length;
-  if (!count) return;
 
   if (e.key === 'ArrowDown') {
     e.preventDefault();
-    setSelected(selectedIdx < count - 1 ? selectedIdx + 1 : 0);
+    if (chipIdx >= 0) {
+      // Type chips → method results.
+      setChip(-1);
+      if (count) setSelected(0);
+    } else if (selectedIdx >= 0) {
+      setSelected(selectedIdx < count - 1 ? selectedIdx + 1 : 0);
+    } else {
+      // Search bar → type chips first, then method results.
+      if (chipCount) setChip(0);
+      else if (count) setSelected(0);
+    }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    setSelected(selectedIdx > 0 ? selectedIdx - 1 : count - 1);
+    if (chipIdx >= 0) {
+      setChip(-1); // back to the search bar
+    } else if (selectedIdx > 0) {
+      setSelected(selectedIdx - 1);
+    } else if (selectedIdx === 0) {
+      // Top of results → type chips if available, else back to the search bar.
+      setSelected(-1);
+      if (chipCount) setChip(0);
+    }
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (chipIdx >= 0) {
+      e.preventDefault();
+      if (e.key === 'ArrowRight') setChip(chipIdx < chips.length - 1 ? chipIdx + 1 : 0);
+      else setChip(chipIdx > 0 ? chipIdx - 1 : chips.length - 1);
+    }
+    // Otherwise let the arrows move the text cursor normally.
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    if (selectedIdx >= 0) toggleExpand(selectedIdx);
-    else if (count > 0) toggleExpand(0);
+    if (chipIdx >= 0) {
+      selectChipType(chips[chipIdx].dataset.type);
+    } else if (selectedIdx >= 0) {
+      toggleExpand(selectedIdx);
+    } else if (count > 0) {
+      toggleExpand(0);
+    }
   } else if (e.key === 'Escape') {
     e.preventDefault();
-    if (expandedIdx >= 0) {
+    if (chipIdx >= 0) {
+      setChip(-1);
+    } else if (expandedIdx >= 0) {
       const details = resultsEl.querySelectorAll('.result-detail');
       if (details[expandedIdx]) details[expandedIdx].classList.remove('open');
       expandedIdx = -1;

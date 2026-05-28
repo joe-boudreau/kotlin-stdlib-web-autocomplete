@@ -384,6 +384,13 @@ body {
   color: var(--accent-kotlin);
 }
 
+.type-chip.kbd {
+  background: var(--bg-active);
+  border-color: var(--accent-kotlin);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--accent-kotlin-dim);
+}
+
 /* ── Results ─────────────────────────────────── */
 
 .results-container {
@@ -840,15 +847,19 @@ body {
   html { font-size: 15px; }
 
   .toolbar {
-    flex-wrap: wrap;
+    display: flex;
+    align-items: center;
     height: auto;
-    padding: 8px 10px;
-    gap: 6px;
+    padding: 10px;
+    gap: 0;
   }
 
+  /* On mobile, drop the logo and the version/theme controls so the search bar
+     gets the full width. */
   .toolbar-left { display: none; }
-  .toolbar-center { order: -1; width: 100%; }
-  .toolbar-right { margin-left: auto; }
+  .toolbar-right { display: none; }
+
+  .toolbar-center { width: 100%; gap: 10px; }
 
   .search-wrapper { max-width: none; }
   .search-hint { display: none; }
