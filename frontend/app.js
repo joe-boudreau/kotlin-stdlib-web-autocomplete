@@ -19,6 +19,14 @@ const emptyState = document.getElementById('emptyState');
 const typeBar = document.getElementById('typeBar');
 const footer = document.getElementById('footer');
 const typeChips = document.getElementById('typeChips');
+const themeToggle = document.getElementById('themeToggle');
+
+// ── Theme toggle ────────────────────────────────
+themeToggle.addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+});
 
 // ── Bootstrap ───────────────────────────────────
 fetch('methods.json')
@@ -120,8 +128,8 @@ function search(raw) {
       }
     }
   } else if (query) {
-    // Global search
-    updateTypeBar([], '');
+    // Global search — also surface types whose names prefix-match the query
+    updateTypeBar(allTypes.filter(t => matchType(t, query)), query);
 
     for (const e of allEntries) {
       const score = fuzzyScore(e.member, query);

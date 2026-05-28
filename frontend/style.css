@@ -18,9 +18,9 @@
   --border-strong: #4a4b55;
 
   /* Text */
-  --text-primary: #c8c9cf;
-  --text-secondary: #8b8d98;
-  --text-tertiary: #5f6170;
+  --text-primary: #e3e4e9;
+  --text-secondary: #b4b6c1;
+  --text-tertiary: #7c7e92;
   --text-inverse: #1a1b1e;
 
   /* Syntax — Darcula-inspired */
@@ -54,6 +54,53 @@
   /* Fonts */
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ── Light theme — IntelliJ "Light" heritage ───── */
+
+:root[data-theme="light"] {
+  /* Surface layers */
+  --bg-deep: #f4f5f7;
+  --bg-base: #ffffff;
+  --bg-raised: #f7f8fa;
+  --bg-surface: #eef0f3;
+  --bg-hover: #e9ebef;
+  --bg-active: #dce4f2;
+
+  /* Borders */
+  --border-subtle: #e5e7eb;
+  --border-default: #d2d5db;
+  --border-strong: #b6bac2;
+
+  /* Text */
+  --text-primary: #1a1b1e;
+  --text-secondary: #45474f;
+  --text-tertiary: #80838f;
+  --text-inverse: #ffffff;
+
+  /* Syntax — IntelliJ light-inspired */
+  --syn-keyword: #0033b3;
+  --syn-type: #00627a;
+  --syn-string: #067d17;
+  --syn-number: #1750eb;
+  --syn-param: #001080;
+  --syn-annotation: #9e880d;
+  --syn-function: #7a3e9d;
+  --syn-generic: #00627a;
+
+  /* Accents */
+  --accent-kotlin: #7f52ff;
+  --accent-kotlin-dim: rgba(127, 82, 255, 0.12);
+  --accent-blue: #1750eb;
+  --accent-orange: #c07000;
+  --accent-green: #067d17;
+  --accent-teal: #00808a;
+
+  /* Kind badges */
+  --badge-fn: #1750eb;
+  --badge-ext: #7a3e9d;
+  --badge-prop: #00808a;
+  --badge-ctor: #b06b00;
 }
 
 *, *::before, *::after {
@@ -197,7 +244,10 @@ body {
 }
 
 .toolbar-right {
-  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .result-count {
@@ -206,6 +256,35 @@ body {
   color: var(--text-tertiary);
   white-space: nowrap;
 }
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.theme-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.theme-toggle svg {
+  display: block;
+}
+
+:root[data-theme="light"] .theme-icon-moon { display: none; }
+:root[data-theme="dark"] .theme-icon-sun,
+:root:not([data-theme="light"]) .theme-icon-sun { display: none; }
 
 /* ── Type bar ────────────────────────────────── */
 
