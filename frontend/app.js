@@ -155,8 +155,10 @@ function search(raw) {
   let results = [];
 
   if (type) {
-    // Type-scoped search
-    const matchingTypes = allTypes.filter(t => matchType(t, type));
+    // Type-scoped search. If the text before the dot is an exact type name,
+    // scope strictly to it; otherwise fall back to prefix matching.
+    const exact = allTypes.find(t => t.toLowerCase() === type.toLowerCase());
+    const matchingTypes = exact ? [exact] : allTypes.filter(t => matchType(t, type));
 
     if (matchingTypes.length === 0) {
       updateTypeBar([], type);
