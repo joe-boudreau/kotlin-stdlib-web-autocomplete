@@ -5,13 +5,13 @@ A browser-based autocomplete and documentation reference for the entire Kotlin s
 ## Architecture
 
 ```
-[Build step — ./gradlew run]
+[Build step — ./gradlew generateAll, once per Kotlin version]
   kotlin-stdlib.jar ──→ MetadataParser ──→ ParseResult (types + extensions)
-  .kotlin_builtins   ──→ BuiltinsParser ──┘
+  .kotlin_builtins   ──→ BuiltinsParser ──┘   (@Metadata read from .class bytes via ASM)
                                           ↓
                          InheritanceResolver → denormalized entries
                                           ↓
-  kotlin-stdlib-sources.jar → KDocParser → DocMerger → entries with docs
+  sources + common-sources jars → KDocParser → DocMerger → entries with docs
                                           ↓
                                      methods-<v>.json.gz (one per version, ~620KB each)
 
@@ -39,12 +39,13 @@ To serve locally: `cd frontend && python3 -m http.server 8090`
 
 ```
 src/main/kotlin/
-  Main.kt                          — entry point, orchestrates parse → resolve → merge → serialize
+  Main.kt                          — entry point; args: <binary-jar> <output-path> <sources-jar>...
   model/Model.kt                   — data classes (ParamInfo, MemberInfo, TypeInfo, DenormalizedEntry)
-  parser/MetadataParser.kt          — scans kotlin-stdlib.jar, reads @Metadata from .class files
+  parser/MetadataParser.kt          — scans a stdlib jar, reads @Metadata from each .class
+  parser/MetadataAnnotationReader.kt — extracts @Metadata from .class bytes via ASM (version-independent)
   parser/BuiltinsParser.kt          — reads .kotlin_builtins protobuf files for mapped types
   parser/InheritanceResolver.kt     — walks supertype graph, propagates extensions, deduplicates
-  docs/KDocParser.kt                — parses KDoc from kotlin-stdlib-sources.jar .kt files
+  docs/KDocParser.kt                — parses KDoc from one or more sources jars
   docs/DocMerger.kt                 — matches KDoc entries to denormalized entries by name + params
 
 src/main/java/
@@ -52,17 +53,20 @@ src/main/java/
                                       access to kotlin.metadata.internal.* packages, Java doesn't)
 
 frontend/
-  index.html                        — single-page app
+  index.html                        — single-page app (toolbar has the version dropdown)
   style.css                         — Darcula-inspired dark theme, JetBrains Mono + IBM Plex Sans
-  app.js                            — search, fuzzy matching, keyboard nav, KDoc rendering
-  methods.json                      — generated data file (not checked in, ~7MB)
+  app.js                            — search, fuzzy matching, keyboard nav, KDoc rendering, version loading
+  data/methods-<v>.json.gz          — generated per-version datasets (gzipped)
+  data/versions.json                — version manifest: {"default": "...", "versions": [...]}
   kotlin-icon.png                   — Kotlin logo for branding
 ```
 
 ## Data Pipeline Details
 
 ### 1. MetadataParser
-Iterates every `.class` in kotlin-stdlib.jar, reads `@Metadata` annotations via `Class.forName`, parses with `KotlinClassMetadata.readLenient()`. Handles `Class`, `FileFacade`, and `MultiFileClassPart` metadata types. Extracts types with declared members and extension functions with receiver types. Filters out private/internal visibility. No package filtering — covers the entire stdlib.
+Iterates every `.class` in the given stdlib jar and reads its `@Metadata` annotation **from the raw class bytes via ASM** (`MetadataAnnotationReader`), reconstructs a `kotlin.Metadata` instance, and parses it with `KotlinClassMetadata.readLenient()`. Reading from bytes (rather than `Class.forName`) is what lets the build parse an arbitrary version's jar that isn't on its own classpath. Handles `Class`, `FileFacade`, and `MultiFileClassPart` metadata types. Extracts types with declared members and extension functions with receiver types. Filters out private/internal visibility. No package filtering — covers the entire stdlib.
+
+> ASM gotcha: primitive arrays in annotations (e.g. `mv`, the metadata version `int[]`) arrive through a single scalar `visit()` call, **not** `visitArray()`. String arrays (`d1`/`d2`) do go through `visitArray()`. Getting this wrong silently drops `metadataVersion` and `readLenient` rejects the result.
 
 ### 2. BuiltinsParser
 Reads `.kotlin_builtins` protobuf files from the stdlib JAR for **mapped types** (List, Map, String, Int, etc.) that don't have `@Metadata` annotations because they're compiled to JVM primitives/interfaces. Uses `BuiltinsReader.java` as a bridge since Kotlin restricts access to `kotlin.metadata.internal.*` packages. Extracts class declarations, member functions, properties, supertypes, and type parameters.
@@ -84,7 +88,7 @@ Takes the combined types map and extension function list, then:
 Output: flat list of `DenormalizedEntry` — every type lists every method callable on it.
 
 ### 4. KDocParser
-Parses `.kt` source files from `kotlin-stdlib-sources.jar`. Tracks enclosing class/interface scope to associate KDoc for members declared inside type bodies (critical for builtin interfaces like `List`, `Map`). Extracts summary (first sentence/paragraph), full description, @param docs, @return, @since tags.
+Parses `.kt` source files from one or more sources jars (`parseSourcesJar(vararg jarPaths)`). Tracks enclosing class/interface scope to associate KDoc for members declared inside type bodies (critical for builtin interfaces like `List`, `Map`). Extracts summary (first sentence/paragraph), full description, @param docs, @return, @since tags. Entries are merged with `putIfAbsent`, so jar order matters: the main sources jar is passed first, then `kotlin-stdlib-common` as a fallback.
 
 ### 5. DocMerger
 Matches KDoc entries to denormalized entries using a multi-step strategy:
@@ -93,7 +97,18 @@ Matches KDoc entries to denormalized entries using a multi-step strategy:
 3. Null receiver with param-name validation (class-declared members)
 4. Name + param count with param-name matching (cross-type fallback)
 
-Current coverage: ~86% of entries have documentation.
+Current coverage: ~85–86% of entries have documentation (consistent across all supported versions).
+
+## Multi-version Generation
+
+The whole pipeline runs once per Kotlin version and is orchestrated entirely in `build.gradle.kts`.
+
+- **Version list** — `stdlibVersions` (in `build.gradle.kts`) holds the latest patch of each minor from 1.8 through 2.3. The first entry is the manifest default. Add/remove versions by editing this list.
+- **Per-version jars** — for each version a `detached(...)` configuration resolves `kotlin-stdlib:<v>` (binary), `kotlin-stdlib:<v>:sources`, and `kotlin-stdlib-common:<v>:sources`, all `isTransitive = false`. The common-sources jar is resolved leniently (`runCatching`) because it may not exist for every version.
+- **Tasks** — each version gets a `generate_<v_with_underscores>` JavaExec task running `MainKt`; the lifecycle task `generateAll` depends on all of them and, in `doLast`, writes `frontend/data/versions.json`.
+- **Why common-sources** — pre-2.0 stdlibs keep the generated extension sources (`_Collections.kt`, `_Strings.kt`, `_Arrays.kt`, …) in `kotlin-stdlib-common`. Without it, 1.8/1.9 KDoc coverage drops to ~25%; with it, ~85%.
+- **Reader/version compatibility** — `kotlin-metadata-jvm` and the `kotlin("jvm")` plugin are pinned to the **highest** supported version (2.3.21). Metadata readers are backward-compatible (a newer reader reads older metadata), so one reader handles the whole range. The constraint to preserve when bumping the range: reader version ≥ newest stdlib version parsed.
+- **Output** — gzipped JSON (`Main` gzips when the output path ends in `.gz`); see Known Limitations for the transfer-size rationale.
 
 ## Data Model (methods.json)
 
@@ -133,7 +148,11 @@ Key features:
 - **KDoc rendering**: converts KDoc markdown to HTML (inline code, code blocks, bold, symbol links)
 - **Type bar**: clickable chips for matching types
 - **Operator symbols** shown alongside method names
-- **URL hash state**: `#List.filter` is bookmarkable
+- **Version dropdown**: switches the active Kotlin version (see below)
+- **URL hash state**: `#<version>/<query>` (e.g. `#2.3.21/List.filter`) is bookmarkable and version-pinned
+
+### Version loading
+On boot, `app.js` fetches `data/versions.json`, populates the dropdown, and picks the initial version in priority order: URL hash → `localStorage` (`kotlinVersion`) → manifest default. `loadVersion(v)` then fetches `data/methods-<v>.json.gz`, decompresses it in the browser with `DecompressionStream('gzip')` (the file is served opaquely, not via `Content-Encoding`, so no double-decompress), rebuilds the in-memory index, and re-runs the current query. Changing the dropdown or navigating the hash both route through the same path. Legacy hashes without a version prefix (`#List.filter`) are still honored as a bare query.
 
 ## Tech Stack
 
