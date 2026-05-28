@@ -1,8 +1,8 @@
-# Kotlin stdlib Search
+# Kotlin stdlib API Search
 
-A browser-based autocomplete and documentation reference for the entire Kotlin standard library. Built for programming interviews where you can use online materials but not your own IDE.
+A browser-based autocomplete and documentation reference for the entire Kotlin standard library. Same information as the [official docs](https://kotlinlang.org/api/core/kotlin-stdlib/) but more easily searchable — similar to autocomplete in the IDE
 
-Search 388 types and 13,000+ members with fuzzy matching, full method signatures, and official KDoc documentation — all client-side, no backend required.
+Search 300+ types and 13,000+ members with fuzzy matching, full method signatures, and official KDoc documentation — all client-side, no backend required.
 
 ## Quick Start
 
