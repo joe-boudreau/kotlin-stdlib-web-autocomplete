@@ -75,10 +75,13 @@ function populateVersionSelect(manifest) {
 function loadVersion(version) {
   currentVersion = version;
   localStorage.setItem(LS_VERSION_KEY, version);
-  return fetch(`data/methods-${version}.json`)
+  return fetch(`data/methods-${version}.json.gz`)
     .then(r => {
-      if (!r.ok) throw new Error(`Failed to load methods-${version}.json: ${r.status}`);
-      return r.json();
+      if (!r.ok) throw new Error(`Failed to load methods-${version}.json.gz: ${r.status}`);
+      // Files are gzip-compressed; decompress in the browser (the static host serves
+      // them as opaque .gz, not with Content-Encoding, so fetch won't auto-decompress).
+      const stream = r.body.pipeThrough(new DecompressionStream('gzip'));
+      return new Response(stream).json();
     })
     .then(data => {
       allEntries = data;

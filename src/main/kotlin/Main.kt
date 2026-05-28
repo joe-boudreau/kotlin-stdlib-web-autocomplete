@@ -5,6 +5,7 @@ import kotlinx.serialization.encodeToString
 import parser.InheritanceResolver
 import parser.MetadataParser
 import java.io.File
+import java.util.zip.GZIPOutputStream
 
 val json = Json {
     prettyPrint = false
@@ -38,7 +39,12 @@ fun main(args: Array<String>) {
 
     val outputFile = File(outputPath)
     outputFile.parentFile?.mkdirs()
-    outputFile.writeText(json.encodeToString(sorted))
+    val bytes = json.encodeToString(sorted).toByteArray()
+    if (outputPath.endsWith(".gz")) {
+        GZIPOutputStream(outputFile.outputStream().buffered()).use { it.write(bytes) }
+    } else {
+        outputFile.writeBytes(bytes)
+    }
 
     val fileSizeKb = outputFile.length() / 1024
     println("\nWrote ${sorted.size} entries to ${outputFile.absolutePath} (${fileSizeKb} KB)")

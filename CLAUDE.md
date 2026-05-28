@@ -13,19 +13,19 @@ A browser-based autocomplete and documentation reference for the entire Kotlin s
                                           ↓
   kotlin-stdlib-sources.jar → KDocParser → DocMerger → entries with docs
                                           ↓
-                                     methods.json (13,746 entries, ~7MB)
+                                     methods-<v>.json.gz (one per version, ~620KB each)
 
 [Deploy — static site]
-  frontend/index.html + frontend/methods.json
+  frontend/index.html + frontend/data/methods-<v>.json.gz + frontend/data/versions.json
 
 [Runtime]
-  fetch methods.json → in-memory array → fuzzy search → render
+  fetch versions.json → fetch+gunzip methods-<v>.json.gz → in-memory array → fuzzy search → render
 ```
 
 ## How to Build
 
 ```bash
-./gradlew generateAll            # generates frontend/data/methods-<version>.json for all versions + versions.json
+./gradlew generateAll            # generates frontend/data/methods-<version>.json.gz for all versions + versions.json
 ./gradlew run                    # single-version: methods.json in project root (build's own stdlib)
 ```
 
@@ -148,4 +148,4 @@ Key features:
 - ~14% of entries lack KDoc (mostly builtin operator overloads on primitive types like `Int.plus(Long)` — these have many overloads with identical docs in the compiler source but different param type combos that don't match)
 - Type parameters on mapped types from builtins sometimes show `*` instead of the resolved type variable (e.g. `Iterator<*>` instead of `Iterator<E>`)
 - No Java interop methods (only Kotlin stdlib declarations)
-- `methods.json` is ~7MB — loads fine but could be compressed for production deploy
+- Per-version datasets are written gzip-compressed as `methods-<v>.json.gz` (~620KB each, down from ~7MB raw) and decompressed in the browser via `DecompressionStream`. The static host must serve `.gz` as an opaque file (no `Content-Encoding: gzip`), which GitHub Pages and `python3 -m http.server` both do; otherwise the browser double-decompresses.

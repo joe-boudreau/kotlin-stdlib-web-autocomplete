@@ -79,7 +79,7 @@ stdlibVersions.forEach { v ->
                 add(sourcesConfig.singleFile.absolutePath)
                 runCatching { commonSourcesConfig.singleFile.absolutePath }.getOrNull()?.let { add(it) }
             }
-            listOf(binaryConfig.singleFile.absolutePath, "frontend/data/methods-$v.json") + sources
+            listOf(binaryConfig.singleFile.absolutePath, "frontend/data/methods-$v.json.gz") + sources
         }
     }
     generateAll.configure { dependsOn(gen) }
